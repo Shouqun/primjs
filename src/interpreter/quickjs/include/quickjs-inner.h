@@ -488,6 +488,7 @@ typedef struct JSUnhandledRejectionEntry {
   struct list_head link;
   LEPUSValue error;
   LEPUSValue promise;
+  LEPUSValue reason;
 } JSUnhandledRejectionEntry;
 
 struct LEPUSClass {
@@ -2077,6 +2078,8 @@ void JS_SetClassProto_GC(LEPUSContext *ctx, LEPUSClassID class_id,
                          LEPUSValue obj);
 LEPUSValue JS_GetClassProto_GC(LEPUSContext *ctx, LEPUSClassID class_id);
 int JS_MoveUnhandledRejectionToException_GC(LEPUSContext *ctx);
+int JS_TakeUnhandledRejection_GC(LEPUSContext *ctx, LEPUSValue *promise,
+                                 LEPUSValue *reason, LEPUSValue *error);
 void JS_AddIntrinsicRegExpCompiler_GC(LEPUSContext *ctx);
 #ifdef QJS_UNITTEST
 LEPUSValue js_string_codePointRange_GC(LEPUSContext *ctx,

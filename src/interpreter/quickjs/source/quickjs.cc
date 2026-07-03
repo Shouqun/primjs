@@ -1457,6 +1457,8 @@ void LEPUS_FreeRuntime(LEPUSRuntime *rt) {
     JSUnhandledRejectionEntry *e =
         list_entry(el, JSUnhandledRejectionEntry, link);
     LEPUS_FreeValueRT(rt, e->error);
+    LEPUS_FreeValueRT(rt, e->promise);
+    LEPUS_FreeValueRT(rt, e->reason);
     lepus_free_rt(rt, e);
   }
   init_list_head(&rt->unhandled_rejections);
@@ -45196,6 +45198,39 @@ int LEPUS_MoveUnhandledRejectionToException(LEPUSContext *ctx) {
   JSUnhandledRejectionEntry *e =
       list_entry(el, JSUnhandledRejectionEntry, link);
   ctx->rt->current_exception = e->error;
+  LEPUS_FreeValue(ctx, e->promise);
+  LEPUS_FreeValue(ctx, e->reason);
+  list_del(el);
+  lepus_free_rt(ctx->rt, el);
+  return 1;
+}
+
+int LEPUS_TakeUnhandledRejection(LEPUSContext *ctx, LEPUSValue *promise,
+                                 LEPUSValue *reason, LEPUSValue *error) {
+  CallGCFunc(JS_TakeUnhandledRejection_GC, ctx, promise, reason, error);
+  if (promise) *promise = LEPUS_UNDEFINED;
+  if (reason) *reason = LEPUS_UNDEFINED;
+  if (error) *error = LEPUS_UNDEFINED;
+  if (!LEPUS_IsNull(ctx->rt->current_exception)) {
+    LEPUS_FreeValue(ctx, LEPUS_GetException(ctx));
+  }
+  struct list_head *el = ctx->rt->unhandled_rejections.next;
+  if (el == &ctx->rt->unhandled_rejections) return 0;
+  JSUnhandledRejectionEntry *e =
+      list_entry(el, JSUnhandledRejectionEntry, link);
+  if (promise) {
+    *promise = LEPUS_DupValue(ctx, e->promise);
+  }
+  if (reason) {
+    *reason = LEPUS_DupValue(ctx, e->reason);
+  }
+  if (error) {
+    *error = e->error;
+  } else {
+    LEPUS_FreeValue(ctx, e->error);
+  }
+  LEPUS_FreeValue(ctx, e->promise);
+  LEPUS_FreeValue(ctx, e->reason);
   list_del(el);
   lepus_free_rt(ctx->rt, el);
   return 1;
@@ -45318,9 +45353,8 @@ QJS_STATIC void fulfill_or_reject_promise(LEPUSContext *ctx,
     /* Unhandled rejection detected */
     JSUnhandledRejectionEntry *e;
     e = static_cast<JSUnhandledRejectionEntry *>(lepus_malloc(ctx, sizeof(*e)));
-    // only promises handled later will use this value, thus its refcount always
-    // > 0 when using
-    e->promise = promise;
+    e->promise = LEPUS_DupValue(ctx, promise);
+    e->reason = LEPUS_DupValue(ctx, value);
 
     if (LEPUS_IsError(ctx, value)) {
       e->error = LEPUS_DupValue(ctx, value);
@@ -45335,6 +45369,8 @@ QJS_STATIC void fulfill_or_reject_promise(LEPUSContext *ctx,
       list_add_tail(&e->link, &ctx->rt->unhandled_rejections);
     } else {
       LEPUS_FreeValue(ctx, e->error);
+      LEPUS_FreeValue(ctx, e->promise);
+      LEPUS_FreeValue(ctx, e->reason);
       lepus_free(ctx, e);
     }
   }
@@ -45510,6 +45546,7 @@ QJS_STATIC void js_promise_finalizer(LEPUSRuntime *rt, LEPUSValue val) {
     JSUnhandledRejectionEntry *e =
         list_entry(el, JSUnhandledRejectionEntry, link);
     if (LEPUS_VALUE_GET_PTR(e->promise) == LEPUS_VALUE_GET_PTR(val)) {
+      LEPUS_FreeValueRT(rt, e->promise);
       e->promise = LEPUS_NULL;
       break;
     }
@@ -46171,6 +46208,8 @@ QJS_STATIC __exception int perform_promise_then(
       if (!LEPUS_IsNull(e->promise) &&
           LEPUS_GetOpaque(e->promise, JS_CLASS_PROMISE) == s) {
         LEPUS_FreeValue(ctx, e->error);
+        LEPUS_FreeValue(ctx, e->promise);
+        LEPUS_FreeValue(ctx, e->reason);
         list_del(el);
         lepus_free_rt(ctx->rt, el);
         break;
