@@ -797,6 +797,8 @@ LEPUSValue LEPUS_GetClassProto(LEPUSContext *ctx, LEPUSClassID class_id);
 int LEPUS_MoveUnhandledRejectionToException(LEPUSContext *ctx);
 int LEPUS_TakeUnhandledRejection(LEPUSContext *ctx, LEPUSValue *promise,
                                  LEPUSValue *reason, LEPUSValue *error);
+int LEPUS_TakeHandledRejection(LEPUSContext *ctx, LEPUSValue *promise,
+                               LEPUSValue *reason);
 size_t LEPUS_GetHeapSize(LEPUSRuntime *rt);
 /* force to trigger memory usage report via callback registered by
  * LEPUS_SetGCObserver */

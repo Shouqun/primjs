@@ -413,6 +413,7 @@ struct LEPUSRuntime {
 
   struct list_head
       unhandled_rejections;        // record the first unhandled rejection error
+  struct list_head handled_rejections;  // record reported rejections handled later
   struct list_head async_func_sf;  // record all async functions' stack frame.
 
 #ifdef BUILD_ASYNC_STACK
@@ -2080,6 +2081,8 @@ LEPUSValue JS_GetClassProto_GC(LEPUSContext *ctx, LEPUSClassID class_id);
 int JS_MoveUnhandledRejectionToException_GC(LEPUSContext *ctx);
 int JS_TakeUnhandledRejection_GC(LEPUSContext *ctx, LEPUSValue *promise,
                                  LEPUSValue *reason, LEPUSValue *error);
+int JS_TakeHandledRejection_GC(LEPUSContext *ctx, LEPUSValue *promise,
+                               LEPUSValue *reason);
 void JS_AddIntrinsicRegExpCompiler_GC(LEPUSContext *ctx);
 #ifdef QJS_UNITTEST
 LEPUSValue js_string_codePointRange_GC(LEPUSContext *ctx,
@@ -3046,6 +3049,7 @@ typedef struct JSPromiseData {
   /* 0=fulfill, 1=reject, list of * JSPromiseReactionData.link */
   struct list_head promise_reactions[2];
   BOOL is_handled; /* Note: only useful to debug */
+  BOOL is_unhandled_rejection_reported;
   LEPUSValue promise_result;
 } JSPromiseData;
 
