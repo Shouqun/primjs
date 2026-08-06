@@ -24020,6 +24020,13 @@ void LEPUS_SetModuleLoaderFunc(LEPUSRuntime *rt,
   rt->module_loader_opaque = opaque;
 }
 
+void LEPUS_SetModuleDynamicImportFunc(
+    LEPUSRuntime *rt, LEPUSModuleDynamicImportFunc *module_dynamic_import,
+    void *opaque) {
+  rt->module_dynamic_import_func = module_dynamic_import;
+  rt->module_dynamic_import_opaque = opaque;
+}
+
 /* default module filename normalizer */
 QJS_STATIC char *js_default_module_normalize_name(LEPUSContext *ctx,
                                                   const char *base_name,
@@ -24812,16 +24819,68 @@ fail:
   return -1;
 }
 
+QJS_STATIC LEPUSValue js_load_module_namespace(LEPUSContext *ctx,
+                                               JSAtom basename,
+                                               JSAtom filename) {
+  HandleScope func_scope(ctx);
+  LEPUSModuleDef *m;
+  LEPUSValue ret = LEPUS_UNDEFINED, func_obj, ns;
+  func_scope.PushHandle(&ret, HANDLE_TYPE_LEPUS_VALUE);
+
+  m = js_host_resolve_imported_module(ctx, basename, filename);
+  if (!m) return LEPUS_EXCEPTION;
+
+  if (js_resolve_module(ctx, m) < 0) {
+    if (!ctx->gc_enable) js_free_modules(ctx, JS_FREE_MODULE_NOT_RESOLVED);
+    return LEPUS_EXCEPTION;
+  }
+
+  /* Evaluate the module code */
+  func_obj = ctx->gc_enable
+                 ? LEPUS_MKPTR(LEPUS_TAG_MODULE, m)
+                 : LEPUS_DupValue(ctx, LEPUS_MKPTR(LEPUS_TAG_MODULE, m));
+  func_scope.PushHandle(&func_obj, HANDLE_TYPE_LEPUS_VALUE);
+  ret = LEPUS_EvalFunction(ctx, func_obj, ctx->global_obj);
+  if (LEPUS_IsException(ret)) return LEPUS_EXCEPTION;
+  if (!ctx->gc_enable) LEPUS_FreeValue(ctx, ret);
+
+  ns = js_get_module_ns(ctx, m);
+  return ns;
+}
+
+LEPUSValue LEPUS_LoadModuleNamespace(LEPUSContext *ctx,
+                                     const char *module_base_name,
+                                     const char *module_name) {
+  HandleScope func_scope(ctx);
+  if (!module_base_name || !module_name) {
+    return LEPUS_ThrowTypeError(ctx, "module name is unavailable");
+  }
+  JSAtom basename = LEPUS_NewAtom(ctx, module_base_name);
+  if (basename == JS_ATOM_NULL) return LEPUS_EXCEPTION;
+  func_scope.PushLEPUSAtom(basename);
+  JSAtom filename = LEPUS_NewAtom(ctx, module_name);
+  if (filename == JS_ATOM_NULL) {
+    if (!ctx->gc_enable) LEPUS_FreeAtom(ctx, basename);
+    return LEPUS_EXCEPTION;
+  }
+  func_scope.PushLEPUSAtom(filename);
+  LEPUSValue result = js_load_module_namespace(ctx, basename, filename);
+  if (!ctx->gc_enable) {
+    LEPUS_FreeAtom(ctx, basename);
+    LEPUS_FreeAtom(ctx, filename);
+  }
+  return result;
+}
+
 LEPUSValue js_dynamic_import(LEPUSContext *ctx, LEPUSValueConst specifier) {
   HandleScope func_scope(ctx);
   LEPUSStackFrame *sf;
   LEPUSFunctionBytecode *b;
   LEPUSObject *p;
-  LEPUSModuleDef *m;
   JSAtom basename, filename;
   LEPUSValue promise, resolving_funcs[2];
   func_scope.PushLEPUSValueArrayHandle(resolving_funcs, 2);
-  LEPUSValue specifierString, ret = LEPUS_UNDEFINED, func_obj, err, ns;
+  LEPUSValue specifierString, ret = LEPUS_UNDEFINED, err, ns;
   func_scope.PushHandle(&ret, HANDLE_TYPE_LEPUS_VALUE);
 
   promise = LEPUS_NewPromiseCapability(ctx, resolving_funcs);
@@ -24851,29 +24910,41 @@ LEPUSValue js_dynamic_import(LEPUSContext *ctx, LEPUSValueConst specifier) {
   if (filename == JS_ATOM_NULL) goto exception;
   func_scope.PushLEPUSAtom(filename);
 
-  m = js_host_resolve_imported_module(ctx, basename, filename);
+  if (ctx->rt->module_dynamic_import_func) {
+    const char *base_name = LEPUS_AtomToCString(ctx, basename);
+    if (!base_name) {
+      if (!ctx->gc_enable) LEPUS_FreeAtom(ctx, filename);
+      goto exception;
+    }
+    func_scope.PushHandle(&base_name, HANDLE_TYPE_CSTRING);
+    const char *module_name = LEPUS_AtomToCString(ctx, filename);
+    if (!module_name) {
+      if (!ctx->gc_enable) {
+        LEPUS_FreeCString(ctx, base_name);
+        LEPUS_FreeAtom(ctx, filename);
+      }
+      goto exception;
+    }
+    func_scope.PushHandle(&module_name, HANDLE_TYPE_CSTRING);
+    int accepted = ctx->rt->module_dynamic_import_func(
+        ctx, base_name, module_name, resolving_funcs[0], resolving_funcs[1],
+        ctx->rt->module_dynamic_import_opaque);
+    if (!ctx->gc_enable) {
+      LEPUS_FreeCString(ctx, base_name);
+      LEPUS_FreeCString(ctx, module_name);
+      LEPUS_FreeAtom(ctx, filename);
+    }
+    if (accepted < 0) goto exception;
+    if (!ctx->gc_enable) {
+      LEPUS_FreeValue(ctx, resolving_funcs[0]);
+      LEPUS_FreeValue(ctx, resolving_funcs[1]);
+    }
+    return promise;
+  }
+
+  ns = js_load_module_namespace(ctx, basename, filename);
   if (!ctx->gc_enable) LEPUS_FreeAtom(ctx, filename);
-  if (!m) {
-    goto exception;
-  }
-
-  if (js_resolve_module(ctx, m) < 0) {
-    if (!ctx->gc_enable) js_free_modules(ctx, JS_FREE_MODULE_NOT_RESOLVED);
-    goto exception;
-  }
-
-  /* Evaluate the module code */
-  func_obj = ctx->gc_enable
-                 ? LEPUS_MKPTR(LEPUS_TAG_MODULE, m)
-                 : LEPUS_DupValue(ctx, LEPUS_MKPTR(LEPUS_TAG_MODULE, m));
-  func_scope.PushHandle(&func_obj, HANDLE_TYPE_LEPUS_VALUE);
-  ret = LEPUS_EvalFunction(ctx, func_obj, ctx->global_obj);
-  if (LEPUS_IsException(ret)) goto exception;
-  if (!ctx->gc_enable) LEPUS_FreeValue(ctx, ret);
-
-  /* return the module namespace */
-  ns = js_get_module_ns(ctx, m);
-  if (LEPUS_IsException(ret)) goto exception;
+  if (LEPUS_IsException(ns)) goto exception;
   func_scope.PushHandle(&ns, HANDLE_TYPE_LEPUS_VALUE);
 
   ret = LEPUS_Call(ctx, resolving_funcs[0], LEPUS_UNDEFINED, 1,

@@ -401,6 +401,8 @@ struct LEPUSRuntime {
   LEPUSModuleNormalizeFunc *module_normalize_func;
   LEPUSModuleLoaderFunc *module_loader_func;
   void *module_loader_opaque;
+  LEPUSModuleDynamicImportFunc *module_dynamic_import_func;
+  void *module_dynamic_import_opaque;
 
   BOOL can_block : 8; /* TRUE if Atomics.wait can block */
 

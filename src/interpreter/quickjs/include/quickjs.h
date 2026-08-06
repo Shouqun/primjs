@@ -1365,6 +1365,14 @@ typedef char *LEPUSModuleNormalizeFunc(LEPUSContext *ctx,
 typedef LEPUSModuleDef *LEPUSModuleLoaderFunc(LEPUSContext *ctx,
                                               const char *module_name,
                                               void *opaque);
+/* Return zero after retaining resolve/reject to complete the import later.
+   Return a negative value with a pending exception to reject immediately. */
+typedef int LEPUSModuleDynamicImportFunc(LEPUSContext *ctx,
+                                         const char *module_base_name,
+                                         const char *module_name,
+                                         LEPUSValueConst resolve,
+                                         LEPUSValueConst reject,
+                                         void *opaque);
 
 /* module_normalize = NULL is allowed and invokes the default module
    filename normalizer */
@@ -1372,6 +1380,12 @@ void LEPUS_SetModuleLoaderFunc(LEPUSRuntime *rt,
                                LEPUSModuleNormalizeFunc *module_normalize,
                                LEPUSModuleLoaderFunc *module_loader,
                                void *opaque);
+void LEPUS_SetModuleDynamicImportFunc(
+    LEPUSRuntime *rt, LEPUSModuleDynamicImportFunc *module_dynamic_import,
+    void *opaque);
+LEPUSValue LEPUS_LoadModuleNamespace(LEPUSContext *ctx,
+                                     const char *module_base_name,
+                                     const char *module_name);
 
 /* LEPUS Job support */
 
