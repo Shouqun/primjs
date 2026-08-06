@@ -24797,6 +24797,11 @@ int js_link_module(LEPUSContext *ctx, LEPUSModuleDef *m) {
         HeapObjStore(ctx, &me->u.local.var_ref, var_ref);
       }
     }
+
+    /* Initialize hoisted module bindings before evaluating dependencies. */
+    ret_val = LEPUS_Call(ctx, m->func_obj, LEPUS_TRUE, 0, NULL);
+    if (LEPUS_IsException(ret_val)) goto fail;
+    if (!ctx->gc_enable) LEPUS_FreeValue(ctx, ret_val);
   }
 
 #ifdef DUMP_MODULE_RESOLVE
