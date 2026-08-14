@@ -384,6 +384,7 @@ struct LEPUSRuntime {
   size_t stack_size; /* in bytes */
 
   LEPUSValue current_exception;
+  int64_t current_exception_line_column;
   /* true if a backtrace needs to be added to the current exception
      (the backtrace generation cannot be done immediately in a bytecode
      function) */

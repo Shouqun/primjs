@@ -6656,6 +6656,7 @@ LEPUSValue LEPUS_Throw(LEPUSContext *ctx, LEPUSValue obj) {
   LEPUSRuntime *rt = ctx->rt;
   if (!ctx->gc_enable) LEPUS_FreeValue(ctx, rt->current_exception);
   rt->current_exception = obj;
+  rt->current_exception_line_column = 0;
   rt->exception_needs_backtrace = LEPUS_IsError(ctx, obj);
   if (LEPUS_IsObject(rt->current_exception) &&
       find_own_property1(LEPUS_VALUE_GET_OBJ(rt->current_exception),
@@ -6664,12 +6665,35 @@ LEPUSValue LEPUS_Throw(LEPUSContext *ctx, LEPUSValue obj) {
   return LEPUS_EXCEPTION;
 }
 
+int LEPUS_GetExceptionLocation(LEPUSContext *ctx, int32_t *line,
+                               int64_t *column) {
+  int64_t line_column = ctx->rt->current_exception_line_column;
+  if (LEPUS_IsNull(ctx->rt->current_exception) || line_column <= 0 ||
+      line == NULL || column == NULL)
+    return 0;
+
+  int type = line_column >> LINE_COLUMN_TYPE_SHIFT;
+  if (type == 1) {
+    *line = line_column & (((uint64_t)1 << LINE_NUMBER_BITS_COUNT) - 1);
+    *column =
+        (line_column ^ ((uint64_t)1 << LINE_COLUMN_TYPE_SHIFT)) >>
+        LINE_NUMBER_BITS_COUNT;
+  } else if (type == 0) {
+    *line = line_column & (((uint64_t)1 << OLD_LINE_NUMBER_BITS_COUNT) - 1);
+    *column = line_column >> OLD_LINE_NUMBER_BITS_COUNT;
+  } else {
+    return 0;
+  }
+  return *line > 0;
+}
+
 /* return the pending exception (cannot be called twice). */
 LEPUSValue LEPUS_GetException(LEPUSContext *ctx) {
   LEPUSRuntime *rt = ctx->rt;
   LEPUSValue val;
   val = rt->current_exception;
   rt->current_exception = LEPUS_NULL;
+  rt->current_exception_line_column = 0;
   rt->exception_needs_backtrace = FALSE;
   return val;
 }
@@ -6965,6 +6989,13 @@ void build_backtrace(LEPUSContext *ctx, LEPUSValueConst error_obj,
   DynBuf dbuf;
 
   ctx->rt->exception_needs_backtrace = FALSE;
+  if (filename && line_num > 0 &&
+      LEPUS_IsObject(error_obj) &&
+      LEPUS_IsObject(ctx->rt->current_exception) &&
+      LEPUS_VALUE_GET_OBJ(error_obj) ==
+          LEPUS_VALUE_GET_OBJ(ctx->rt->current_exception)) {
+    ctx->rt->current_exception_line_column = line_num;
+  }
   js_dbuf_init(ctx, &dbuf);
   func_scope.PushHandle(&dbuf.buf, HANDLE_TYPE_HEAP_OBJ);
   if (filename) {
@@ -16402,6 +16433,13 @@ restart:
     }
   }
 exception:
+  if (rt->current_exception_line_column == 0 && b->has_debug &&
+      pc > b->byte_code_buf) {
+    int64_t line_column =
+        find_line_num(ctx, b, pc - b->byte_code_buf - 1);
+    if (line_column > 0)
+      rt->current_exception_line_column = line_column;
+  }
   if (rt->exception_needs_backtrace) {
     /* add the backtrace information now (it is not done
        before if the exception happens in a bytecode
@@ -16422,6 +16460,7 @@ exception:
         } else {
           *sp++ = rt->current_exception;
           rt->current_exception = LEPUS_NULL;
+          rt->current_exception_line_column = 0;
           pc = b->byte_code_buf + pos;
           goto restart;
         }

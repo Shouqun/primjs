@@ -1046,6 +1046,9 @@ static inline LEPUS_BOOL LEPUS_IsObject(LEPUSValueConst v) {
 }
 
 LEPUSValue LEPUS_Throw(LEPUSContext *ctx, LEPUSValue obj);
+/* Reads the 1-based location of the pending exception before it is consumed. */
+int LEPUS_GetExceptionLocation(LEPUSContext *ctx, int32_t *line,
+                               int64_t *column);
 LEPUSValue LEPUS_GetException(LEPUSContext *ctx);
 LEPUS_BOOL LEPUS_IsError(LEPUSContext *ctx, LEPUSValueConst val);
 #ifdef QJS_UNITTEST
