@@ -14333,6 +14333,10 @@ static const LEPUSCFunctionListEntry js_error_proto_funcs[] = {
                           LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE),
 };
 
+static const LEPUSCFunctionListEntry js_error_funcs[] = {
+    LEPUS_CFUNC_DEF("captureStackTrace", 2, js_error_capture_stack_trace),
+};
+
 /* Array */
 
 static int JS_CopySubArray(LEPUSContext *ctx, LEPUSValueConst obj,
@@ -24662,7 +24666,8 @@ QJS_STATIC void JS_AddIntrinsicBasicObjects_GC(LEPUSContext *ctx) {
   ft.generic_magic = js_error_constructor;
   obj = JS_NewCConstructor(ctx, JS_CLASS_ERROR, "Error", ft.generic, 1,
                            LEPUS_CFUNC_constructor_or_func_magic, -1,
-                           LEPUS_UNDEFINED, nullptr, 0, js_error_proto_funcs,
+                           LEPUS_UNDEFINED, js_error_funcs,
+                           countof(js_error_funcs), js_error_proto_funcs,
                            countof(js_error_proto_funcs), 0);
 
   for (i = 0; i < JS_NATIVE_ERROR_COUNT; i++) {

@@ -1709,7 +1709,8 @@ QJS_HIDE LEPUSValue JS_ThrowStackOverflow_GC(LEPUSContext *ctx);
 QJS_HIDE void build_backtrace(
     LEPUSContext *ctx, LEPUSValueConst error_obj, const char *filename,
     /* <Primjs begin> */ int64_t line_num, /* <Primjs end> */
-    const uint8_t *cur_pc, int backtrace_flags, uint8_t is_parse_error = 0);
+    const uint8_t *cur_pc, int backtrace_flags, uint8_t is_parse_error = 0,
+    LEPUSValueConst frame_boundary = LEPUS_UNDEFINED);
 QJS_HIDE LEPUSValue JS_NewSymbolFromAtom(LEPUSContext *ctx, JSAtom descr,
                                          int atom_type);
 QJS_HIDE LEPUSValue JS_NewSymbolFromAtom_GC(LEPUSContext *ctx, JSAtom descr,
@@ -2742,9 +2743,13 @@ QJS_HIDE void build_backtrace_frame(LEPUSContext *ctx, LEPUSStackFrame *sf,
                                     DynBuf *dbuf, const uint8_t *cur_pc,
                                     BOOL is_async, BOOL is_debug_mode,
                                     LEPUSValueConst error_obj);
-QJS_HIDE void get_backtrace(LEPUSContext *ctx, DynBuf *dbuf, BOOL is_debug_mode,
-                            LEPUSValueConst error_obj, const uint8_t *cur_pc,
-                            int backtrace_flags);
+QJS_HIDE BOOL get_backtrace(LEPUSContext *ctx, DynBuf *dbuf,
+                            BOOL is_debug_mode, LEPUSValueConst error_obj,
+                            const uint8_t *cur_pc, int backtrace_flags,
+                            LEPUSValueConst frame_boundary = LEPUS_UNDEFINED);
+QJS_HIDE LEPUSValue js_error_capture_stack_trace(
+    LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
+    LEPUSValueConst *argv);
 QJS_HIDE LEPUSValue JS_GetIterator(LEPUSContext *ctx, LEPUSValueConst obj,
                                    BOOL is_async);
 QJS_HIDE LEPUSValue JS_GetIterator2(LEPUSContext *ctx, LEPUSValueConst obj,

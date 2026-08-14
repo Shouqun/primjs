@@ -6952,7 +6952,8 @@ void build_backtrace(LEPUSContext *ctx, LEPUSValueConst error_obj,
                      const char *filename,
                      /* <Primjs begin> */ int64_t line_num, /* <Primjs end> */
                      const uint8_t *cur_pc, int backtrace_flags,
-                     uint8_t is_parse_error) {
+                     uint8_t is_parse_error,
+                     LEPUSValueConst frame_boundary) {
   BOOL is_debug_mode = FALSE;
 #ifdef ENABLE_QUICKJS_DEBUGGER
   is_debug_mode = ctx->debugger_mode;
@@ -6998,9 +6999,12 @@ void build_backtrace(LEPUSContext *ctx, LEPUSValueConst error_obj,
                               LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
   }
 
-  get_backtrace(ctx, &dbuf, is_debug_mode, error_obj, cur_pc, backtrace_flags);
+  BOOL boundary_found =
+      get_backtrace(ctx, &dbuf, is_debug_mode, error_obj, cur_pc,
+                    backtrace_flags, frame_boundary);
 #ifdef BUILD_ASYNC_STACK
-  build_async_backtrace(ctx, cur_pc, &dbuf, is_debug_mode, error_obj);
+  if (boundary_found)
+    build_async_backtrace(ctx, cur_pc, &dbuf, is_debug_mode, error_obj);
 #endif
   dbuf_putc(&dbuf, '\0');
   if (dbuf_error(&dbuf))
@@ -7021,22 +7025,29 @@ void build_backtrace(LEPUSContext *ctx, LEPUSValueConst error_obj,
   // <Primjs end>
 }
 
-void get_backtrace(LEPUSContext *ctx, DynBuf *dbuf, BOOL is_debug_mode,
+BOOL get_backtrace(LEPUSContext *ctx, DynBuf *dbuf, BOOL is_debug_mode,
                    LEPUSValueConst error_obj, const uint8_t *cur_pc,
-                   int backtrace_flags) {
+                   int backtrace_flags, LEPUSValueConst frame_boundary) {
   LEPUSStackFrame *sf;
-  const char *func_name_str;
-  const char *str1;
-  LEPUSObject *p;
+  BOOL boundary_found = LEPUS_IsUndefined(frame_boundary);
 
   for (sf = ctx->rt->current_stack_frame; sf != NULL; sf = sf->prev_frame) {
     if (backtrace_flags & JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL) {
       backtrace_flags &= ~JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL;
       continue;
     }
+    if (!boundary_found) {
+      if (LEPUS_IsObject(sf->cur_func) &&
+          LEPUS_VALUE_GET_OBJ(sf->cur_func) ==
+              LEPUS_VALUE_GET_OBJ(frame_boundary)) {
+        boundary_found = TRUE;
+      }
+      continue;
+    }
     build_backtrace_frame(ctx, sf, dbuf, cur_pc, FALSE, is_debug_mode,
                           error_obj);
   }
+  return boundary_found;
 }
 
 LEPUSValue LEPUS_NewError(LEPUSContext *ctx) {
@@ -34816,6 +34827,19 @@ exception:
   return LEPUS_EXCEPTION;
 }
 
+LEPUSValue js_error_capture_stack_trace(LEPUSContext *ctx,
+                                        LEPUSValueConst this_val, int argc,
+                                        LEPUSValueConst *argv) {
+  if (argc < 1 || !LEPUS_IsObject(argv[0]))
+    return JS_ThrowTypeErrorNotAnObject(ctx);
+
+  LEPUSValueConst frame_boundary = LEPUS_UNDEFINED;
+  if (argc > 1 && LEPUS_IsFunction(ctx, argv[1])) frame_boundary = argv[1];
+  build_backtrace(ctx, argv[0], NULL, 0, NULL,
+                  JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL, 0, frame_boundary);
+  return LEPUS_UNDEFINED;
+}
+
 QJS_STATIC LEPUSValue js_error_toString(LEPUSContext *ctx,
                                         LEPUSValueConst this_val, int argc,
                                         LEPUSValueConst *argv) {
@@ -34849,6 +34873,10 @@ static const LEPUSCFunctionListEntry js_error_proto_funcs[] = {
                           LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE),
     LEPUS_PROP_STRING_DEF("message", "",
                           LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE),
+};
+
+static const LEPUSCFunctionListEntry js_error_funcs[] = {
+    LEPUS_CFUNC_DEF("captureStackTrace", 2, js_error_capture_stack_trace),
 };
 
 /* Array */
@@ -48169,7 +48197,8 @@ QJS_STATIC void JS_AddIntrinsicBasicObjects(LEPUSContext *ctx) {
   ft.generic_magic = js_error_constructor;
   obj = JS_NewCConstructor(ctx, JS_CLASS_ERROR, "Error", ft.generic, 1,
                            LEPUS_CFUNC_constructor_or_func_magic, -1,
-                           LEPUS_UNDEFINED, nullptr, 0, js_error_proto_funcs,
+                           LEPUS_UNDEFINED, js_error_funcs,
+                           countof(js_error_funcs), js_error_proto_funcs,
                            countof(js_error_proto_funcs), 0);
 
   for (i = 0; i < JS_NATIVE_ERROR_COUNT; i++) {
