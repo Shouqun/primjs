@@ -1848,6 +1848,7 @@ static inline BOOL js_check_stack_overflow(LEPUSContext *ctx,
 
 LEPUSValue LEPUS_ThrowOutOfMemory(LEPUSContext *ctx) {
   LEPUSRuntime *rt = ctx->rt;
+  rt->out_of_memory_reported = TRUE;
   if (!rt->in_out_of_memory) {
     rt->in_out_of_memory = TRUE;
     LEPUS_ThrowInternalError(ctx, "out of memory");
@@ -45426,6 +45427,13 @@ size_t LEPUS_GetHeapSize(LEPUSRuntime *rt) {
   } else {
     return rt->malloc_state.malloc_size;
   }
+}
+
+LEPUS_BOOL LEPUS_TakeOutOfMemorySignal(LEPUSRuntime *rt) {
+  if (!rt) return FALSE;
+  const LEPUS_BOOL reported = rt->out_of_memory_reported;
+  rt->out_of_memory_reported = FALSE;
+  return reported;
 }
 
 void LEPUS_ReportGCInfo(LEPUSRuntime *rt) { JS_UpdateGCInfo(rt, 0, true); }

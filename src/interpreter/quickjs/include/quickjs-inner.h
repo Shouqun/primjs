@@ -391,6 +391,8 @@ struct LEPUSRuntime {
   BOOL exception_needs_backtrace;
   /* true if inside an out of memory error, to avoid recursing */
   BOOL in_out_of_memory : 8;
+  /* sticky until the embedding layer consumes the resource-limit signal */
+  BOOL out_of_memory_reported : 8;
 
   struct LEPUSStackFrame *current_stack_frame;
 

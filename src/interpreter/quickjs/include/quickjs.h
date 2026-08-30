@@ -800,6 +800,7 @@ int LEPUS_TakeUnhandledRejection(LEPUSContext *ctx, LEPUSValue *promise,
 int LEPUS_TakeHandledRejection(LEPUSContext *ctx, LEPUSValue *promise,
                                LEPUSValue *reason);
 size_t LEPUS_GetHeapSize(LEPUSRuntime *rt);
+LEPUS_BOOL LEPUS_TakeOutOfMemorySignal(LEPUSRuntime *rt);
 /* force to trigger memory usage report via callback registered by
  * LEPUS_SetGCObserver */
 void LEPUS_ReportGCInfo(LEPUSRuntime *rt);
