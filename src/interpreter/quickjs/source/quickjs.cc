@@ -38623,8 +38623,10 @@ QJS_STATIC LEPUSValue js_math_imul(LEPUSContext *ctx, LEPUSValueConst this_val,
 
   if (LEPUS_ToInt32(ctx, &a, argv[0])) return LEPUS_EXCEPTION;
   if (LEPUS_ToInt32(ctx, &b, argv[1])) return LEPUS_EXCEPTION;
-  /* purposely ignoring overflow */
-  return LEPUS_NewInt32(ctx, a * b);
+  uint32_t product = static_cast<uint32_t>(a) * static_cast<uint32_t>(b);
+  int64_t signed_product = product;
+  if (signed_product >= 0x80000000LL) signed_product -= 0x100000000LL;
+  return LEPUS_NewInt32(ctx, static_cast<int32_t>(signed_product));
 }
 
 QJS_STATIC LEPUSValue js_math_clz32(LEPUSContext *ctx, LEPUSValueConst this_val,
