@@ -34,10 +34,17 @@ option(ENABLE_UNITTESTS "Enable build unittests" OFF)
 option(ENABLE_BUILD_AAR "Enable build aar" OFF)
 option(ENABLE_VIRTUAL_STACK "Enable use virtual sp" OFF)
 
+if(APPLE)
+  set(PRIMJS_ADDRESS_SIGNIFICANCE_FLAG "")
+else()
+  set(PRIMJS_ADDRESS_SIGNIFICANCE_FLAG "-faddrsig")
+endif()
+
 set(CMAKE_COMMON_FLAGS
     "${CMAKE_COMMON_FLAGS} -Os -fPIC -ffunction-sections -fdata-sections \
     -fno-short-enums -fno-strict-aliasing -Wall -Wextra -Wno-unused-parameter \
-    -Wno-unused-function -faddrsig -Wno-c99-designator -Wno-unknown-warning-option \
+    -Wno-unused-function ${PRIMJS_ADDRESS_SIGNIFICANCE_FLAG} \
+    -Wno-c99-designator -Wno-unknown-warning-option \
     -Wno-sign-compare -Wno-unused-but-set-variable")
 
 if(ENABLE_ASAN)
