@@ -481,6 +481,28 @@ TEST_F(ReadFunctionOverflowTest, DirectEvalClosuresStillRoundTrip) {
       42);
 }
 
+TEST_F(ReadFunctionOverflowTest, MappedArgumentsDirectEvalClosureSurvivesUnwind) {
+  ExpectClosureRoundTrip(
+      "(function(value) { var local = 2; arguments[0] = 40; "
+      "return eval('(function() { return value + local; })'); })(1)()",
+      42);
+}
+
+TEST_F(ReadFunctionOverflowTest, NativeAndExplicitStackBoundariesRemainDistinct) {
+  ExpectClosureRoundTrip(
+      "(function() { "
+      "function ordinary() { try { return null.field; } "
+      "catch (error) { return error.stack; } } "
+      "function hidden() { var target = {}; "
+      "Error.captureStackTrace(target, hidden); return target.stack; } "
+      "function visible() { return hidden(); } "
+      "var explicitStack = visible(); "
+      "return ordinary().indexOf('ordinary') >= 0 && "
+      "explicitStack.indexOf('visible') >= 0 && "
+      "explicitStack.indexOf('hidden') < 0; })()",
+      1);
+}
+
 TEST_F(ReadFunctionOverflowTest, ClosureFreeFunctionStillRoundTrips) {
   ExpectClosureRoundTrip("(function() { return 42; })()", 42);
 }
