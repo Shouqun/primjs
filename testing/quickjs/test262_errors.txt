@@ -937,11 +937,6 @@ test/language/literals/string/legacy-non-octal-escape-sequence-8-strict.js:29: s
 test/language/literals/string/legacy-non-octal-escape-sequence-9-strict-explicit-pragma.js:24: unexpected error type: Test262: This statement should not be evaluated.
 test/language/literals/string/legacy-non-octal-escape-sequence-9-strict.js:29: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test/language/module-code/eval-gtbndng-indirect-faux-assertion.js:38: TypeError: property is not configurable
-test/language/module-code/eval-gtbndng-indirect-update-dflt.js:23: TypeError: val is not a function
-test/language/module-code/export-default-asyncfunction-declaration-binding.js:18: TypeError: cannot set property 'foo' of undefined
-test/language/module-code/export-default-asyncgenerator-declaration-binding.js:18: TypeError: cannot set property 'foo' of undefined
-test/language/module-code/export-default-function-declaration-binding.js:18: TypeError: cannot set property 'foo' of undefined
-test/language/module-code/export-default-generator-declaration-binding.js:18: TypeError: cannot set property 'foo' of undefined
 test/language/module-code/export-expname-binding-index.js:32: SyntaxError: identifier expected
 test/language/module-code/export-expname-binding-string.js:15: SyntaxError: identifier expected
 test/language/module-code/export-expname-from-binding-string.js:20: SyntaxError: identifier expected
@@ -960,19 +955,6 @@ test/language/module-code/import-assertion-newlines.js:29: SyntaxError: expectin
 test/language/module-code/import-assertion-trlng-comma.js:26: SyntaxError: expecting ';'
 test/language/module-code/import-assertion-value-string-double.js:26: SyntaxError: expecting ';'
 test/language/module-code/import-assertion-value-string-single.js:26: SyntaxError: expecting ';'
-test/language/module-code/instn-iee-bndng-fun.js:43: TypeError: B is not a function
-test/language/module-code/instn-iee-bndng-gen.js:45: TypeError: B is not a function
-test/language/module-code/instn-local-bndng-export-fun.js:23: TypeError: test262 is not a function
-test/language/module-code/instn-local-bndng-export-gen.js:23: TypeError: test262 is not a function
-test/language/module-code/instn-local-bndng-fun.js:26: Test262Error: function value is hoisted Expected SameValue(«undefined», «function») to be true
-test/language/module-code/instn-local-bndng-gen.js:21: Test262Error: generator function value is hoisted Expected SameValue(«undefined», «function») to be true
-test/language/module-code/instn-named-bndng-dflt-fun-anon.js:46: TypeError: f is not a function
-test/language/module-code/instn-named-bndng-dflt-fun-named.js:46: TypeError: f is not a function
-test/language/module-code/instn-named-bndng-dflt-gen-anon.js:49: TypeError: g is not a function
-test/language/module-code/instn-named-bndng-dflt-gen-named.js:49: TypeError: g is not a function
-test/language/module-code/instn-named-bndng-fun.js:45: TypeError: f2 is not a function
-test/language/module-code/instn-named-bndng-gen.js:47: TypeError: g2 is not a function
-test/language/module-code/instn-uniq-env-rec.js:20: Test262Error: function declaration Expected SameValue(«undefined», «function») to be true
 test/language/module-code/namespace/internals/define-own-property.js:30: Test262Error: Object.freeze: 1 Expected a TypeError to be thrown but no exception was thrown at all
 test/language/module-code/top-level-await/await-awaits-thenable-not-callable.js:14: SyntaxError: unexpected 'await' keyword
 test/language/module-code/top-level-await/await-awaits-thenables-that-throw.js:21: SyntaxError: unexpected 'await' keyword
