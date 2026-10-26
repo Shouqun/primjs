@@ -18842,6 +18842,14 @@ static LEPUSValue js_string_localeCompare(LEPUSContext *ctx,
   return LEPUS_NewInt32(ctx, cmp);
 }
 
+/* Native Unicode loops must consult the actual handler, rather than spend
+   another full VM instruction counter at each native checkpoint. */
+static int js_unicode_poll(LEPUSContext *ctx, int *remaining) {
+  if (--*remaining > 0) return 0;
+  *remaining = 1024;
+  return __js_poll_interrupts(ctx);
+}
+
 static LEPUSValue js_string_toLowerCase(LEPUSContext *ctx,
                                         LEPUSValueConst this_val, int argc,
                                         LEPUSValueConst *argv, int to_lower) {
@@ -18850,6 +18858,7 @@ static LEPUSValue js_string_toLowerCase(LEPUSContext *ctx,
   StringBuffer *b = &b_s;
   JSString *p;
   int i, c, j, l;
+  int remaining = 0;
   uint32_t res[LRE_CC_RES_LEN_MAX];
 
   val = JS_ToStringCheckObject(ctx, this_val);
@@ -18859,8 +18868,14 @@ static LEPUSValue js_string_toLowerCase(LEPUSContext *ctx,
   if (p->len == 0) return val;
   if (string_buffer_init_raw_gc(ctx, &b_s, p->len)) goto fail;
   for (i = 0; i < p->len;) {
+    if (js_unicode_poll(ctx, &remaining)) goto fail;
     c = string_getc(p, &i);
-    if (c == 0x3a3 && to_lower && test_final_sigma(p, i - 1)) {
+    int final_sigma = 0;
+    if (c == 0x3a3 && to_lower) {
+      final_sigma = test_final_sigma_with_interrupt(ctx, p, i - 1, &remaining);
+      if (final_sigma < 0) goto fail;
+    }
+    if (final_sigma) {
       res[0] = 0x3c2; /* final sigma */
       l = 1;
     } else {
@@ -18885,6 +18900,7 @@ static int JS_ToUTF32String(LEPUSContext *ctx, uint32_t **pbuf,
   JSString *p;
   uint32_t *buf;
   int i, j, len;
+  int remaining = 0;
 
   val = JS_ToString_GC(ctx, val1);
   if (LEPUS_IsException(val)) return -1;
@@ -18897,7 +18913,11 @@ static int JS_ToUTF32String(LEPUSContext *ctx, uint32_t **pbuf,
   if (!buf) {
     goto fail;
   }
-  for (i = j = 0; i < len;) buf[j++] = string_getc(p, &i);
+  func_scope.PushHandle(&buf, HANDLE_TYPE_HEAP_OBJ);
+  for (i = j = 0; i < len;) {
+    if (js_unicode_poll(ctx, &remaining)) goto fail;
+    buf[j++] = string_getc(p, &i);
+  }
   *pbuf = buf;
   return j;
 fail:
@@ -18908,16 +18928,48 @@ fail:
 static LEPUSValue JS_NewUTF32String(LEPUSContext *ctx, const uint32_t *buf,
                                     int len) {
   int i;
+  int remaining = 0;
   GCRawStringBuffer b_s(ctx);
   StringBuffer *b = &b_s;
   if (string_buffer_init_raw_gc(ctx, &b_s, len)) return LEPUS_EXCEPTION;
   for (i = 0; i < len; i++) {
+    if (js_unicode_poll(ctx, &remaining)) goto fail;
     if (string_buffer_putc(b, buf[i])) goto fail;
   }
   return string_buffer_end(b);
 fail:
   b->str = NULL;
   return LEPUS_EXCEPTION;
+}
+
+static int js_unicode_interrupt(void *opaque) {
+  return __js_poll_interrupts(static_cast<LEPUSContext *>(opaque));
+}
+
+/* The normalizer owns at most main/scratch buffers. Root their slots, not
+   every old realloc result, so obsolete workspace can be collected. */
+struct JSUnicodeAllocator {
+  LEPUSContext *context;
+  void *buffers[2] = {nullptr, nullptr};
+  HandleScope scope;
+  explicit JSUnicodeAllocator(LEPUSContext *ctx) : context(ctx), scope(ctx) {
+    scope.PushHandle(&buffers[0], HANDLE_TYPE_HEAP_OBJ);
+    scope.PushHandle(&buffers[1], HANDLE_TYPE_HEAP_OBJ);
+  }
+};
+
+static void *js_unicode_realloc(void *opaque, void *ptr, size_t size, int tag) {
+  auto *allocator = static_cast<JSUnicodeAllocator *>(opaque);
+  int slot = 0;
+  while (slot < 2 && allocator->buffers[slot] != ptr) slot++;
+  if (slot == 2) {
+    LEPUS_ThrowInternalError(allocator->context, "invalid Unicode workspace");
+    return nullptr;
+  }
+  void *result = lepus_realloc(allocator->context, ptr, size, tag);
+  if (result || size == 0) allocator->buffers[slot] = result;
+  if (result) WriteBarrierNoStore(allocator->context->rt, result);
+  return result;
 }
 
 static LEPUSValue js_string_normalize(LEPUSContext *ctx,
@@ -18963,11 +19015,13 @@ static LEPUSValue js_string_normalize(LEPUSContext *ctx,
     }
   }
 
-  out_len =
-      unicode_normalize(&out_buf, buf, buf_len, n_type, ctx->rt, ctx, nullptr);
+  JSUnicodeAllocator allocator(ctx);
+  out_len = unicode_normalize_with_interrupt(
+      &out_buf, buf, buf_len, n_type, &allocator, ctx, js_unicode_realloc,
+      js_unicode_interrupt, ctx);
   if (out_len < 0) return LEPUS_EXCEPTION;
   val = JS_NewUTF32String(ctx, out_buf, out_len);
-  system_free(out_buf);
+  js_unicode_realloc(&allocator, out_buf, 0, ALLOC_TAG_WITHOUT_PTR);
   return val;
 }
 #endif /* CONFIG_ALL_UNICODE */
