@@ -537,6 +537,15 @@ struct LEPUSRuntime {
   /* Keep new fields at the end to preserve existing embedded-code offsets. */
   struct list_head lepus_ref_list;
 #endif
+
+  // Embedding extensions follow the complete upstream layout. Generated
+  // interpreter handlers use fixed offsets into the upstream runtime prefix.
+  int64_t current_exception_line_column;
+  /* sticky until the embedding layer consumes the resource-limit signal */
+  BOOL out_of_memory_reported : 8;
+  LEPUSModuleDynamicImportFunc *module_dynamic_import_func;
+  void *module_dynamic_import_opaque;
+  struct list_head handled_rejections;  // reported rejections handled later
 };
 
 // Temporarily attributes allocations to the Runtime-wide common memory slot.
@@ -588,6 +597,7 @@ typedef struct JSUnhandledRejectionEntry {
   struct list_head link;
   LEPUSValue error;
   LEPUSValue promise;
+  LEPUSValue reason;
 } JSUnhandledRejectionEntry;
 
 struct LEPUSClass {
@@ -1903,6 +1913,8 @@ QJS_HIDE void build_backtrace(
     LEPUSContext *ctx, LEPUSValueConst error_obj, const char *filename,
     /* <Primjs begin> */ int64_t line_num, /* <Primjs end> */
     const uint8_t *cur_pc, int backtrace_flags, uint8_t is_parse_error = 0);
+QJS_HIDE LEPUSValue JS_NewSymbolFromAtom(LEPUSContext *ctx, JSAtom descr,
+                                         int atom_type);
 QJS_HIDE LEPUSValue JS_NewSymbolFromAtom_GC(LEPUSContext *ctx, JSAtom descr,
                                             int atom_type);
 QJS_HIDE LEPUSValue JS_ToObject_GC(LEPUSContext *ctx, LEPUSValueConst val);
@@ -2209,6 +2221,10 @@ void JS_SetClassProto_GC(LEPUSContext *ctx, LEPUSClassID class_id,
                          LEPUSValue obj);
 LEPUSValue JS_GetClassProto_GC(LEPUSContext *ctx, LEPUSClassID class_id);
 int JS_MoveUnhandledRejectionToException_GC(LEPUSContext *ctx);
+int JS_TakeUnhandledRejection_GC(LEPUSContext *ctx, LEPUSValue *promise,
+                                 LEPUSValue *reason, LEPUSValue *error);
+int JS_TakeHandledRejection_GC(LEPUSContext *ctx, LEPUSValue *promise,
+                               LEPUSValue *reason);
 void JS_AddIntrinsicRegExpCompiler_GC(LEPUSContext *ctx);
 #ifdef QJS_UNITTEST
 LEPUSValue js_string_codePointRange_GC(LEPUSContext *ctx,
@@ -2880,6 +2896,9 @@ QJS_HIDE void build_backtrace_frame(LEPUSContext *ctx, LEPUSStackFrame *sf,
 QJS_HIDE void get_backtrace(LEPUSContext *ctx, DynBuf *dbuf, BOOL is_debug_mode,
                             LEPUSValueConst error_obj, const uint8_t *cur_pc,
                             int backtrace_flags);
+QJS_HIDE LEPUSValue js_error_capture_stack_trace(
+    LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
+    LEPUSValueConst *argv);
 QJS_HIDE LEPUSValue JS_GetIterator(LEPUSContext *ctx, LEPUSValueConst obj,
                                    BOOL is_async);
 QJS_HIDE LEPUSValue JS_GetIterator2(LEPUSContext *ctx, LEPUSValueConst obj,
@@ -3218,6 +3237,7 @@ typedef struct JSPromiseData {
   /* 0=fulfill, 1=reject, list of * JSPromiseReactionData.link */
   struct list_head promise_reactions[2];
   BOOL is_handled; /* Note: only useful to debug */
+  BOOL is_unhandled_rejection_reported;
   LEPUSValue promise_result;
 } JSPromiseData;
 
