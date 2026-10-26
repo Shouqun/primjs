@@ -10,6 +10,7 @@ group("testing") {
     "quickjs:run_test262",
     "quickjs/compiler:quickjs_unittest",
     "quickjs/compiler:unicode_normalization_unittest",
+    "quickjs/compiler:unicode_interrupt_unittest",
     "quickjs/heap:heap_unittest",
   ]
 }
