@@ -1950,6 +1950,20 @@ void LEPUS_SetOptLepusNGPackageSize(LEPUSRuntime *rt, int enable) {
   }
 }
 
+// Remove the notification before releasing any owned value: its finalizers
+// may synchronously consume another notification from the same queue.
+QJS_STATIC void js_free_rejection_entry(LEPUSRuntime *rt,
+                                        JSUnhandledRejectionEntry *entry) {
+  list_del(&entry->link);
+  LEPUSValue error = entry->error;
+  LEPUSValue promise = entry->promise;
+  LEPUSValue reason = entry->reason;
+  lepus_free_rt(rt, entry);
+  LEPUS_FreeValueRT(rt, error);
+  LEPUS_FreeValueRT(rt, promise);
+  LEPUS_FreeValueRT(rt, reason);
+}
+
 void LEPUS_FreeRuntime(LEPUSRuntime *rt) {
   CallGCFunc(JS_FreeRuntime_GC, rt);
   struct list_head *el, *el1;
@@ -1969,25 +1983,17 @@ void LEPUS_FreeRuntime(LEPUSRuntime *rt) {
   }
   init_list_head(&rt->job_list);
 
-  list_for_each_safe(el, el1, &rt->unhandled_rejections) {
+  while (!list_empty(&rt->unhandled_rejections)) {
     JSUnhandledRejectionEntry *e =
-        list_entry(el, JSUnhandledRejectionEntry, link);
-    LEPUS_FreeValueRT(rt, e->error);
-    LEPUS_FreeValueRT(rt, e->promise);
-    LEPUS_FreeValueRT(rt, e->reason);
-    lepus_free_rt(rt, e);
+        list_entry(rt->unhandled_rejections.next, JSUnhandledRejectionEntry, link);
+    js_free_rejection_entry(rt, e);
   }
-  init_list_head(&rt->unhandled_rejections);
 
-  list_for_each_safe(el, el1, &rt->handled_rejections) {
+  while (!list_empty(&rt->handled_rejections)) {
     JSUnhandledRejectionEntry *e =
-        list_entry(el, JSUnhandledRejectionEntry, link);
-    LEPUS_FreeValueRT(rt, e->error);
-    LEPUS_FreeValueRT(rt, e->promise);
-    LEPUS_FreeValueRT(rt, e->reason);
-    lepus_free_rt(rt, e);
+        list_entry(rt->handled_rejections.next, JSUnhandledRejectionEntry, link);
+    js_free_rejection_entry(rt, e);
   }
-  init_list_head(&rt->handled_rejections);
 
   if (rt->qjsvaluevalue_allocator) {
     delete rt->qjsvaluevalue_allocator;
@@ -47095,10 +47101,8 @@ int LEPUS_MoveUnhandledRejectionToException(LEPUSContext *ctx) {
   JSUnhandledRejectionEntry *e =
       list_entry(el, JSUnhandledRejectionEntry, link);
   ctx->rt->current_exception = e->error;
-  LEPUS_FreeValue(ctx, e->promise);
-  LEPUS_FreeValue(ctx, e->reason);
-  list_del(el);
-  lepus_free_rt(ctx->rt, el);
+  e->error = LEPUS_UNDEFINED;
+  js_free_rejection_entry(ctx->rt, e);
   return 1;
 }
 
@@ -47130,13 +47134,9 @@ int LEPUS_TakeUnhandledRejection(LEPUSContext *ctx, LEPUSValue *promise,
   }
   if (error) {
     *error = e->error;
-  } else {
-    LEPUS_FreeValue(ctx, e->error);
+    e->error = LEPUS_UNDEFINED;
   }
-  LEPUS_FreeValue(ctx, e->promise);
-  LEPUS_FreeValue(ctx, e->reason);
-  list_del(el);
-  lepus_free_rt(ctx->rt, el);
+  js_free_rejection_entry(ctx->rt, e);
   return 1;
 }
 
@@ -47155,11 +47155,7 @@ int LEPUS_TakeHandledRejection(LEPUSContext *ctx, LEPUSValue *promise,
   if (reason) {
     *reason = LEPUS_DupValue(ctx, e->reason);
   }
-  LEPUS_FreeValue(ctx, e->error);
-  LEPUS_FreeValue(ctx, e->promise);
-  LEPUS_FreeValue(ctx, e->reason);
-  list_del(el);
-  lepus_free_rt(ctx->rt, el);
+  js_free_rejection_entry(ctx->rt, e);
   return 1;
 }
 
@@ -47489,15 +47485,6 @@ QJS_STATIC void js_promise_finalizer(LEPUSRuntime *rt, LEPUSValue val) {
     list_for_each_safe(el, el1, &s->promise_reactions[i]) {
       JSPromiseReactionData *rd = list_entry(el, JSPromiseReactionData, link);
       promise_reaction_data_free(rt, rd);
-    }
-  }
-  list_for_each_safe(el, el1, &rt->unhandled_rejections) {
-    JSUnhandledRejectionEntry *e =
-        list_entry(el, JSUnhandledRejectionEntry, link);
-    if (LEPUS_VALUE_GET_PTR(e->promise) == LEPUS_VALUE_GET_PTR(val)) {
-      LEPUS_FreeValueRT(rt, e->promise);
-      e->promise = LEPUS_NULL;
-      break;
     }
   }
   LEPUS_FreeValueRT(rt, s->promise_result);
@@ -48158,11 +48145,7 @@ QJS_STATIC __exception int perform_promise_then(
       if (!LEPUS_IsNull(e->promise) &&
           LEPUS_GetOpaque(e->promise, JS_CLASS_PROMISE) == s) {
         pending_unhandled = TRUE;
-        LEPUS_FreeValue(ctx, e->error);
-        LEPUS_FreeValue(ctx, e->promise);
-        LEPUS_FreeValue(ctx, e->reason);
-        list_del(el);
-        lepus_free_rt(ctx->rt, el);
+        js_free_rejection_entry(ctx->rt, e);
         break;
       }
     }
