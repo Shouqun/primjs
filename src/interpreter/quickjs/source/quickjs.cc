@@ -7858,14 +7858,18 @@ static void build_backtrace_with_boundary(LEPUSContext *ctx,
 
   LEPUSStackFrame *sf;
   LEPUSValue str = LEPUS_UNDEFINED;
+  /* error_obj is often the pending exception. An allocation failing below
+     replaces that exception, which would release this object. */
+  LEPUSValue error = LEPUS_DupValue(ctx, error_obj);
   HandleScope func_scope(ctx, &str, HANDLE_TYPE_LEPUS_VALUE);
+  func_scope.PushHandle(&error, HANDLE_TYPE_LEPUS_VALUE);
   DynBuf dbuf;
 
   ctx->rt->exception_needs_backtrace = FALSE;
   if (filename && line_num > 0 &&
-      LEPUS_IsObject(error_obj) &&
+      LEPUS_IsObject(error) &&
       LEPUS_IsObject(ctx->rt->current_exception) &&
-      LEPUS_VALUE_GET_OBJ(error_obj) ==
+      LEPUS_VALUE_GET_OBJ(error) ==
           LEPUS_VALUE_GET_OBJ(ctx->rt->current_exception)) {
     ctx->rt->current_exception_line_column = line_num;
   }
@@ -7896,19 +7900,20 @@ static void build_backtrace_with_boundary(LEPUSContext *ctx,
     }
     dbuf_putc(&dbuf, '\n');
     str = LEPUS_NewString(ctx, filename);
-    LEPUS_DefinePropertyValue(ctx, error_obj, JS_ATOM_fileName, str,
+    if (LEPUS_IsException(str)) str = LEPUS_NULL;
+    LEPUS_DefinePropertyValue(ctx, error, JS_ATOM_fileName, str,
                               LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
-    LEPUS_DefinePropertyValue(ctx, error_obj, JS_ATOM_lineNumber,
+    LEPUS_DefinePropertyValue(ctx, error, JS_ATOM_lineNumber,
                               LEPUS_NewInt32(ctx, line_num),
                               LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
   }
 
   BOOL boundary_found =
-      get_backtrace_with_boundary(ctx, &dbuf, is_debug_mode, error_obj, cur_pc,
+      get_backtrace_with_boundary(ctx, &dbuf, is_debug_mode, error, cur_pc,
                                   backtrace_flags, frame_boundary);
 #ifdef BUILD_ASYNC_STACK
   if (boundary_found)
-    build_async_backtrace(ctx, cur_pc, &dbuf, is_debug_mode, error_obj);
+    build_async_backtrace(ctx, cur_pc, &dbuf, is_debug_mode, error);
 #endif
   dbuf_putc(&dbuf, '\0');
   if (dbuf_error(&dbuf))
@@ -7916,7 +7921,8 @@ static void build_backtrace_with_boundary(LEPUSContext *ctx,
   else
     str = LEPUS_NewString(ctx, (char *)dbuf.buf);
   if (!ctx->gc_enable) dbuf_free(&dbuf);
-  LEPUS_DefinePropertyValue(ctx, error_obj, JS_ATOM_stack, str,
+  if (LEPUS_IsException(str)) str = LEPUS_NULL;
+  LEPUS_DefinePropertyValue(ctx, error, JS_ATOM_stack, str,
                             LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
 
   // <Primjs begin>
@@ -7927,6 +7933,7 @@ static void build_backtrace_with_boundary(LEPUSContext *ctx,
   }
 #endif
   // <Primjs end>
+  if (!ctx->gc_enable) LEPUS_FreeValue(ctx, error);
 }
 
 // Pre-generated handlers call this symbol with the upstream argument list.
