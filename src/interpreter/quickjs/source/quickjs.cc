@@ -37808,6 +37808,43 @@ fail:
   return LEPUS_EXCEPTION;
 }
 
+QJS_STATIC LEPUSValue js_array_toSorted(LEPUSContext *ctx,
+                                        LEPUSValueConst this_val, int argc,
+                                        LEPUSValueConst *argv) {
+  LEPUSValue obj, arr, val, ret;
+  int64_t i, len;
+
+  // The comparator is validated before the receiver is converted.
+  if (!LEPUS_IsUndefined(argv[0]) && check_function(ctx, argv[0]))
+    return LEPUS_EXCEPTION;
+  arr = LEPUS_UNDEFINED;
+  obj = LEPUS_ToObject(ctx, this_val);
+  if (js_get_length64(ctx, &len, obj)) goto exception;
+  if (len > UINT32_MAX) {
+    LEPUS_ThrowRangeError(ctx, "invalid array length");
+    goto exception;
+  }
+  arr = LEPUS_NewArray(ctx);
+  if (LEPUS_IsException(arr)) goto exception;
+  // Holes are read through the prototype chain, so the copy is dense.
+  for (i = 0; i < len; i++) {
+    val = JS_GetPropertyInt64(ctx, obj, i);
+    if (LEPUS_IsException(val)) goto exception;
+    if (JS_DefinePropertyValueInt64(ctx, arr, i, val,
+                                    LEPUS_PROP_C_W_E | LEPUS_PROP_THROW) < 0)
+      goto exception;
+  }
+  LEPUS_FreeValue(ctx, obj);
+  ret = js_array_sort(ctx, arr, argc, argv);
+  LEPUS_FreeValue(ctx, arr);
+  return ret;
+
+exception:
+  LEPUS_FreeValue(ctx, arr);
+  LEPUS_FreeValue(ctx, obj);
+  return LEPUS_EXCEPTION;
+}
+
 QJS_STATIC void js_array_iterator_finalizer(LEPUSRuntime *rt, LEPUSValue val) {
   LEPUSObject *p = LEPUS_VALUE_GET_OBJ(val);
   JSArrayIteratorData *it = p->u.array_iterator_data;
@@ -38011,6 +38048,7 @@ static const LEPUSCFunctionListEntry js_array_proto_funcs[] = {
     LEPUS_CFUNC_MAGIC_DEF("unshift", 1, js_array_push, 1),
     LEPUS_CFUNC_DEF("reverse", 0, js_array_reverse),
     LEPUS_CFUNC_DEF("sort", 1, js_array_sort),
+    LEPUS_CFUNC_DEF("toSorted", 1, js_array_toSorted),
     LEPUS_CFUNC_MAGIC_DEF("slice", 2, js_array_slice, 0),
     LEPUS_CFUNC_MAGIC_DEF("splice", 2, js_array_slice, 1),
     LEPUS_CFUNC_DEF("copyWithin", 2, js_array_copyWithin),
