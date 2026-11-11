@@ -55,6 +55,7 @@ unittest_set("quickjs_testset") {
     "test_primjs_version.cc",
     "test_promise_rejection.cc",
     "test_read_function_overflow.cc",
+    "test_regexp_unicode_sets.cc",
     "test_relative_indexing.cc",
     "test_string_replace_all.cc",
     "test_unicode_normalization.cc",
@@ -134,6 +135,14 @@ unit_test("object_has_own_unittest") {
 unit_test("read_function_overflow_unittest") {
   testonly = true
   sources = [ "test_read_function_overflow.cc" ]
+  public_configs = [ ":config" ]
+  public_deps = [ "../../../src:quickjs_lib" ]
+  cflags = [ "-Wno-c99-designator" ]
+}
+
+unit_test("regexp_unicode_sets_unittest") {
+  testonly = true
+  sources = [ "test_regexp_unicode_sets.cc" ]
   public_configs = [ ":config" ]
   public_deps = [ "../../../src:quickjs_lib" ]
   cflags = [ "-Wno-c99-designator" ]
